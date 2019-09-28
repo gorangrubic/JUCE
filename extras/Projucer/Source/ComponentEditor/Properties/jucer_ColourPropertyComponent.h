@@ -26,8 +26,16 @@
 
 #pragma once
 
+//#include <exception>
+//#include <iostream>
+//#include <ostream>
+//#include <stdexcept>
+#include <string>
+//#include <windows.h>
+//#include <bits/stdc++.h> 
 
 //==============================================================================
+// This is Color selector popup with 
 class JucerColourPropertyComponent  : public PropertyComponent
 {
 public:
@@ -49,7 +57,8 @@ public:
     }
 
     class ColourEditorComponent    : public Component,
-                                     public ChangeListener
+                                     public ChangeListener,
+									public KeyListener
     {
     public:
         ColourEditorComponent (const bool canReset)
@@ -75,7 +84,31 @@ public:
 
         virtual void setColour (Colour newColour) = 0;
         virtual void resetToDefault() = 0;
+
+		
+
+		bool keyPressed(const KeyPress &key, Component *originatingComponent) override {
+
+			
+			if (key.getModifiers() == ModifierKeys::ctrlModifier) {
+				if (key.getTextCharacter() == 'v' || key.getTextCharacter() == 'V') {
+					PasteColor();
+					return true;
+				}
+			}
+
+			return false;
+
+		}
+
+		/* Sets color from clipboard string (assumed in hex color format) */
+		virtual void PasteColor() = 0;
+
+
+
         virtual Colour getColour() const = 0;
+
+
 
         void refresh()
         {
@@ -87,6 +120,9 @@ public:
                 repaint();
             }
         }
+
+		
+		
 
         void mouseDown (const MouseEvent&) override
         {
@@ -100,6 +136,8 @@ public:
 
             if (cs->getCurrentColour() != getColour())
                 setColour (cs->getCurrentColour());
+
+			
         }
 
         class ColourSelectorComp   : public Component
@@ -108,12 +146,15 @@ public:
             ColourSelectorComp (ColourEditorComponent* owner_,
                                 const bool canReset)
                 : owner (owner_),
-                  defaultButton ("Reset to Default")
+                  defaultButton ("Reset to Default"),
+				PasteColorButton("Paste")
             {
                 addAndMakeVisible (selector);
                 selector.setName ("Colour");
                 selector.setCurrentColour (owner->getColour());
                 selector.addChangeListener (owner);
+
+				addKeyListener(owner);
 
                 if (canReset)
                 {
@@ -127,21 +168,39 @@ public:
                     };
                 }
 
+				addAndMakeVisible(PasteColorButton);
+
+				// hardyVeles patch
+				PasteColorButton.onClick = [this] {
+
+					owner->PasteColor();
+					owner->refresh();
+					selector.setCurrentColour(owner->getColour());
+				};
+				
                 setSize (300, 400);
             }
 
             void resized() override
             {
+				selector.setBounds(0, 0, getWidth(), getHeight() - 30);
+				PasteColorButton.changeWidthToFitText(22);
                 if (defaultButton.isVisible())
                 {
-                    selector.setBounds (0, 0, getWidth(), getHeight() - 30);
-                    defaultButton.changeWidthToFitText (22);
+                    
+                    defaultButton.changeWidthToFitText(22);
                     defaultButton.setTopLeftPosition (10, getHeight() - 26);
+					PasteColorButton.setTopLeftPosition(defaultButton.getX() + defaultButton.getWidth() + 10, getHeight() - 26);
                 }
                 else
                 {
-                    selector.setBounds (getLocalBounds());
+					PasteColorButton.setTopLeftPosition(10, getHeight() - 26);
+                    //selector.setBounds (getLocalBounds());
                 }
+
+				
+				
+				
             }
 
         private:
@@ -171,12 +230,15 @@ public:
             ColourEditorComponent* owner;
             ColourSelectorWithSwatches selector;
             TextButton defaultButton;
+			TextButton PasteColorButton;
         };
 
     private:
         Colour colour;
         bool canResetToDefault;
     };
+
+
 
     class ColourPropEditorComponent     : public ColourEditorComponent
     {
@@ -189,6 +251,31 @@ public:
               owner (owner_)
         {}
 
+		// hardyVeles patch
+		void PasteColor() override {
+			
+			juce::String color_hex = SystemClipboard::getTextFromClipboard();
+			if (color_hex.startsWith("#")) color_hex = color_hex.substring(1);
+			
+			
+			if (color_hex.length() == 6) {
+				unsigned int r, g, b;
+				sscanf(color_hex.getCharPointer(), "%02x%02x%02x", &r, &g, &b);
+
+				Colour newColour = Colour(r, g, b);
+				setColour(newColour);
+			} else if (color_hex.length() == 8) {
+
+				unsigned int a, r, g, b;
+				sscanf(color_hex.getCharPointer(), "%02%02x%02x%02x", &a, &r, &g, &b);
+
+				Colour newColour = Colour(juce::uint8(r), juce::uint8(g), juce::uint8(b), juce::uint8(a));
+				setColour(newColour);
+			}
+			//owner->setColour(newColour);
+
+		}
+
         void setColour (Colour newColour) override
         {
             owner->setColour (newColour);
@@ -198,6 +285,8 @@ public:
         {
             return owner->getColour();
         }
+
+		
 
         void resetToDefault() override
         {
